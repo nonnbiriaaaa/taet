@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<config>
+    <source_groups>
+        <source_group_3a0f18c2-cd23-405d-a33e-ffd5e3a71af8>
+            <name>Python Source Group</name>
+            <source_extensions>
+                <source_extension>.py</source_extension>
+            </source_extensions>
+            <status>enabled</status>
+            <type>Python Source Group</type>
+        </source_group_3a0f18c2-cd23-405d-a33e-ffd5e3a71af8>
+        <source_group_519da352-85ab-4e99-838c-35b0795d8644>
+            <name>Python Source Group</name>
+            <source_extensions>
+                <source_extension>.py</source_extension>
+            </source_extensions>
+            <status>enabled</status>
+            <type>Python Source Group</type>
+        </source_group_519da352-85ab-4e99-838c-35b0795d8644>
+    </source_groups>
+    <version>8</version>
+</config>
