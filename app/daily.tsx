@@ -13,6 +13,7 @@ const C = {
   orange: "#BA4A00",
   purple: "#6C3483", purpleLight: "#E8DAEF",
   gray: "#F2F3F4", border: "#DDDDDD", text: "#222",
+  error: "#C0392B", errorLight: "#FDEDEC",
 };
 
 function toDateStr(d: Date) {
@@ -24,6 +25,50 @@ function fmtDate(s: string) {
   return `${d.getMonth() + 1}月${d.getDate()}日（${"日月火水木金土"[d.getDay()]}）`;
 }
 
+// バリデーションルール
+interface ValidationResult {
+  valid: boolean;
+  message?: string;
+}
+
+function validateWeight(val: string): ValidationResult {
+  if (!val) return { valid: true };
+  const n = Number(val);
+  if (isNaN(n)) return { valid: false, message: "数値を入力してください" };
+  if (n <= 0) return { valid: false, message: "体重は0より大きい値を入力してください" };
+  if (n > 999) return { valid: false, message: "体重は999kg以下を入力してください" };
+  return { valid: true };
+}
+
+function validateExerciseMin(val: string): ValidationResult {
+  if (!val) return { valid: true };
+  const n = Number(val);
+  if (isNaN(n) || !Number.isInteger(n)) return { valid: false, message: "整数を入力してください" };
+  if (n < 0) return { valid: false, message: "0以上の値を入力してください" };
+  if (n > 1440) return { valid: false, message: "1日の上限は1440分です" };
+  return { valid: true };
+}
+
+function validateExerciseCal(val: string): ValidationResult {
+  if (!val) return { valid: true };
+  const n = Number(val);
+  if (isNaN(n) || !Number.isInteger(n)) return { valid: false, message: "整数を入力してください" };
+  if (n < 0) return { valid: false, message: "0以上の値を入力してください" };
+  if (n > 99999) return { valid: false, message: "99999kcal以下を入力してください" };
+  return { valid: true };
+}
+
+function validateTime(val: string): ValidationResult {
+  if (!val) return { valid: true };
+  const matched = /^(\d{1,2}):(\d{2})$/.exec(val);
+  if (!matched) return { valid: false, message: "HH:MM形式で入力してください（例: 23:00）" };
+  const h = Number(matched[1]);
+  const m = Number(matched[2]);
+  if (h < 0 || h > 23) return { valid: false, message: "時は0〜23で入力してください" };
+  if (m < 0 || m > 59) return { valid: false, message: "分は0〜59で入力してください" };
+  return { valid: true };
+}
+
 interface FieldProps {
   label: string;
   value: string;
@@ -32,13 +77,15 @@ interface FieldProps {
   placeholder?: string;
   unit?: string;
   accent?: string;
+  error?: string;
 }
 
-function Field({ label, value, onChangeText, keyboardType = "default", placeholder, unit, accent = C.blue }: FieldProps) {
+function Field({ label, value, onChangeText, keyboardType = "default", placeholder, unit, accent = C.blue, error }: FieldProps) {
+  const hasError = !!error;
   return (
     <View style={styles.field}>
-      <Text style={[styles.fieldLabel, { color: accent }]}>{label}</Text>
-      <View style={[styles.fieldRow, { borderColor: accent }]}>
+      <Text style={[styles.fieldLabel, { color: hasError ? C.error : accent }]}>{label}</Text>
+      <View style={[styles.fieldRow, { borderColor: hasError ? C.error : accent }]}>
         <TextInput
           style={styles.fieldInput}
           value={value}
@@ -48,8 +95,11 @@ function Field({ label, value, onChangeText, keyboardType = "default", placehold
           placeholderTextColor="#AAA"
           returnKeyType="done"
         />
-        {unit && <Text style={[styles.fieldUnit, { color: accent }]}>{unit}</Text>}
+        {unit && <Text style={[styles.fieldUnit, { color: hasError ? C.error : accent }]}>{unit}</Text>}
       </View>
+      {hasError && (
+        <Text style={styles.errorText}>{error}</Text>
+      )}
     </View>
   );
 }
@@ -67,17 +117,42 @@ export default function DailyScreen() {
   const [date, setDate] = useState(toDateStr(new Date()));
   const [rec, setRec] = useState<DailyRecord>({ date });
   const [goals, setGoals] = useState<Goals | null>(null);
+  // 入力値（文字列として管理）
+  const [weightStr, setWeightStr] = useState("");
+  const [exerciseMinStr, setExerciseMinStr] = useState("");
+  const [exerciseCalStr, setExerciseCalStr] = useState("");
 
   useEffect(() => {
     loadGoals().then(setGoals);
   }, []);
 
   useEffect(() => {
-    loadRecord(date).then((r) => setRec(r ?? { date }));
+    loadRecord(date).then((r) => {
+      const loaded: DailyRecord = r ?? { date };
+      setRec(loaded);
+      setWeightStr(loaded.weight != null ? String(loaded.weight) : "");
+      setExerciseMinStr(loaded.exerciseMin != null ? String(loaded.exerciseMin) : "");
+      setExerciseCalStr(loaded.exerciseCal != null ? String(loaded.exerciseCal) : "");
+    });
   }, [date]);
 
   const set = (key: keyof DailyRecord) => (val: string) =>
     setRec((r) => ({ ...r, [key]: val }));
+
+  function handleWeightChange(val: string) {
+    setWeightStr(val);
+    setRec((r) => ({ ...r, weight: val ? Number(val) : undefined }));
+  }
+
+  function handleExerciseMinChange(val: string) {
+    setExerciseMinStr(val);
+    setRec((r) => ({ ...r, exerciseMin: val ? Number(val) : undefined }));
+  }
+
+  function handleExerciseCalChange(val: string) {
+    setExerciseCalStr(val);
+    setRec((r) => ({ ...r, exerciseCal: val ? Number(val) : undefined }));
+  }
 
   function calcSleep(bed: string, wake: string): number | undefined {
     if (!bed || !wake) return undefined;
@@ -99,12 +174,35 @@ export default function DailyScreen() {
     setRec((r) => ({ ...r, wakeup: v, sleepHours: sleep }));
   }
 
+  // バリデーション状態
+  const weightValidation = validateWeight(weightStr);
+  const exerciseMinValidation = validateExerciseMin(exerciseMinStr);
+  const exerciseCalValidation = validateExerciseCal(exerciseCalStr);
+  const bedtimeValidation = validateTime(rec.bedtime ?? "");
+  const wakeupValidation = validateTime(rec.wakeup ?? "");
+
+  const hasValidationError =
+    !weightValidation.valid ||
+    !exerciseMinValidation.valid ||
+    !exerciseCalValidation.valid ||
+    !bedtimeValidation.valid ||
+    !wakeupValidation.valid;
+
   async function handleSave() {
+    if (hasValidationError) {
+      Alert.alert(
+        "入力エラー",
+        "入力内容に誤りがあります。赤く表示されているフィールドを確認してください。",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
     const toSave: DailyRecord = {
       ...rec,
-      weight: rec.weight ? Number(rec.weight) : undefined,
-      exerciseMin: rec.exerciseMin ? Number(rec.exerciseMin) : undefined,
-      exerciseCal: rec.exerciseCal ? Number(rec.exerciseCal) : undefined,
+      weight: weightStr ? Number(weightStr) : undefined,
+      exerciseMin: exerciseMinStr ? Number(exerciseMinStr) : undefined,
+      exerciseCal: exerciseCalStr ? Number(exerciseCalStr) : undefined,
     };
     await saveRecord(toSave);
     Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
@@ -136,9 +234,18 @@ export default function DailyScreen() {
 
       {/* 体重 */}
       <Section title="体重" color={C.green}>
-        <Field label="体重" value={String(rec.weight ?? "")} onChangeText={set("weight")} keyboardType="numeric" unit="kg" placeholder="0.0" accent={C.green} />
-        {rec.weight && goals?.heightCm > 0 && (() => {
-          const bmi = calcBMI(Number(rec.weight), goals!.heightCm);
+        <Field
+          label="体重"
+          value={weightStr}
+          onChangeText={handleWeightChange}
+          keyboardType="numeric"
+          unit="kg"
+          placeholder="0.0"
+          accent={C.green}
+          error={weightValidation.message}
+        />
+        {weightStr && !weightValidation.message && goals?.heightCm > 0 && (() => {
+          const bmi = calcBMI(Number(weightStr), goals!.heightCm);
           const cat = getBMICategory(bmi);
           return (
             <View style={styles.bmiChip}>
@@ -160,14 +267,46 @@ export default function DailyScreen() {
       {/* 運動 */}
       <Section title="運動" color={C.green}>
         <Field label="運動種類" value={rec.exerciseType ?? ""} onChangeText={set("exerciseType")} placeholder="例: ウォーキング" accent={C.green} />
-        <Field label="運動時間" value={String(rec.exerciseMin ?? "")} onChangeText={set("exerciseMin")} keyboardType="numeric" unit="分" placeholder="0" accent={C.green} />
-        <Field label="消費カロリー" value={String(rec.exerciseCal ?? "")} onChangeText={set("exerciseCal")} keyboardType="numeric" unit="kcal" placeholder="0" accent={C.green} />
+        <Field
+          label="運動時間"
+          value={exerciseMinStr}
+          onChangeText={handleExerciseMinChange}
+          keyboardType="numeric"
+          unit="分"
+          placeholder="0"
+          accent={C.green}
+          error={exerciseMinValidation.message}
+        />
+        <Field
+          label="消費カロリー"
+          value={exerciseCalStr}
+          onChangeText={handleExerciseCalChange}
+          keyboardType="numeric"
+          unit="kcal"
+          placeholder="0"
+          accent={C.green}
+          error={exerciseCalValidation.message}
+        />
       </Section>
 
       {/* 睡眠 */}
       <Section title="睡眠" color={C.blue}>
-        <Field label="就寝時刻" value={rec.bedtime ?? ""} onChangeText={handleBedtime} placeholder="23:00" accent={C.blue} />
-        <Field label="起床時刻" value={rec.wakeup ?? ""} onChangeText={handleWakeup} placeholder="07:00" accent={C.blue} />
+        <Field
+          label="就寝時刻"
+          value={rec.bedtime ?? ""}
+          onChangeText={handleBedtime}
+          placeholder="23:00"
+          accent={C.blue}
+          error={bedtimeValidation.message}
+        />
+        <Field
+          label="起床時刻"
+          value={rec.wakeup ?? ""}
+          onChangeText={handleWakeup}
+          placeholder="07:00"
+          accent={C.blue}
+          error={wakeupValidation.message}
+        />
         <View style={styles.sleepResult}>
           <Text style={styles.sleepLabel}>睡眠時間</Text>
           <Text style={[styles.sleepValue, { color: C.blue }]}>
@@ -188,7 +327,10 @@ export default function DailyScreen() {
         />
       </Section>
 
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+      <TouchableOpacity
+        style={[styles.saveBtn, hasValidationError && styles.saveBtnDisabled]}
+        onPress={handleSave}
+      >
         <Text style={styles.saveBtnText}>記録を保存</Text>
       </TouchableOpacity>
     </ScrollView>
@@ -221,6 +363,9 @@ const styles = StyleSheet.create({
   },
   fieldInput: { flex: 1, fontSize: 15, paddingVertical: 8, color: C.text },
   fieldUnit: { fontSize: 13, marginLeft: 4 },
+  errorText: {
+    color: C.error, fontSize: 11, marginTop: 3, paddingLeft: 2,
+  },
   sleepResult: {
     flexDirection: "row", justifyContent: "space-between",
     alignItems: "center", backgroundColor: C.blueLight,
@@ -236,6 +381,9 @@ const styles = StyleSheet.create({
   saveBtn: {
     backgroundColor: C.green, borderRadius: 12, padding: 16,
     alignItems: "center", marginTop: 8,
+  },
+  saveBtnDisabled: {
+    backgroundColor: "#A9C4B5",
   },
   saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   bmiChip: { backgroundColor: C.blueLight, borderRadius: 8, padding: 10, marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
