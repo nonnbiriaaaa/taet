@@ -63,10 +63,19 @@ function Section({ title, color, children }: { title: string; color: string; chi
   );
 }
 
+const TIME_PATTERN = /^\d{2}:\d{2}$/;
+
+function validateTimeStr(t: string): boolean {
+  if (!TIME_PATTERN.test(t)) return false;
+  const [h, m] = t.split(":").map(Number);
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59;
+}
+
 export default function DailyScreen() {
   const [date, setDate] = useState(toDateStr(new Date()));
   const [rec, setRec] = useState<DailyRecord>({ date });
   const [goals, setGoals] = useState<Goals | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     loadGoals().then(setGoals);
@@ -100,14 +109,60 @@ export default function DailyScreen() {
   }
 
   async function handleSave() {
-    const toSave: DailyRecord = {
-      ...rec,
-      weight: rec.weight ? Number(rec.weight) : undefined,
-      exerciseMin: rec.exerciseMin ? Number(rec.exerciseMin) : undefined,
-      exerciseCal: rec.exerciseCal ? Number(rec.exerciseCal) : undefined,
-    };
-    await saveRecord(toSave);
-    Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
+    if (isSaving) return;
+
+    // 体重バリデーション
+    if (rec.weight !== undefined && rec.weight !== null && String(rec.weight) !== "") {
+      const w = Number(rec.weight);
+      if (isNaN(w) || w <= 0 || w > 300) {
+        Alert.alert("入力エラー", "体重は1〜300kgの範囲で入力してください");
+        return;
+      }
+    }
+
+    // 運動時間バリデーション
+    if (rec.exerciseMin !== undefined && rec.exerciseMin !== null && String(rec.exerciseMin) !== "") {
+      const m = Number(rec.exerciseMin);
+      if (isNaN(m) || m < 0 || m > 1440) {
+        Alert.alert("入力エラー", "運動時間は0〜1440分の範囲で入力してください");
+        return;
+      }
+    }
+
+    // 消費カロリーバリデーション
+    if (rec.exerciseCal !== undefined && rec.exerciseCal !== null && String(rec.exerciseCal) !== "") {
+      const c = Number(rec.exerciseCal);
+      if (isNaN(c) || c < 0 || c > 10000) {
+        Alert.alert("入力エラー", "消費カロリーは0〜10000kcalの範囲で入力してください");
+        return;
+      }
+    }
+
+    // 就寝・起床時刻バリデーション
+    if (rec.bedtime && !validateTimeStr(rec.bedtime)) {
+      Alert.alert("入力エラー", "就寝時刻はHH:MM形式で入力してください（例: 23:00）");
+      return;
+    }
+    if (rec.wakeup && !validateTimeStr(rec.wakeup)) {
+      Alert.alert("入力エラー", "起床時刻はHH:MM形式で入力してください（例: 07:00）");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const toSave: DailyRecord = {
+        ...rec,
+        weight: rec.weight && String(rec.weight) !== "" ? Number(rec.weight) : undefined,
+        exerciseMin: rec.exerciseMin && String(rec.exerciseMin) !== "" ? Number(rec.exerciseMin) : undefined,
+        exerciseCal: rec.exerciseCal && String(rec.exerciseCal) !== "" ? Number(rec.exerciseCal) : undefined,
+      };
+      await saveRecord(toSave);
+      Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
+    } catch (e) {
+      Alert.alert("エラー", "保存に失敗しました。もう一度お試しください");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function changeDate(delta: number) {
@@ -188,8 +243,12 @@ export default function DailyScreen() {
         />
       </Section>
 
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>記録を保存</Text>
+      <TouchableOpacity
+        style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+        onPress={handleSave}
+        disabled={isSaving}
+      >
+        <Text style={styles.saveBtnText}>{isSaving ? "保存中…" : "記録を保存"}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -237,6 +296,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.green, borderRadius: 12, padding: 16,
     alignItems: "center", marginTop: 8,
   },
+  saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   bmiChip: { backgroundColor: C.blueLight, borderRadius: 8, padding: 10, marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   bmiChipLabel: { color: C.blue, fontSize: 12 },
