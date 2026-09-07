@@ -156,7 +156,6 @@ const styles = StyleSheet.create({
   banner: {
     backgroundColor: C.green, borderRadius: 14, padding: 18,
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    marginBottom: 20,
   },
   bannerSub: { color: "rgba(255,255,255,0.8)", fontSize: 12 },
   bannerValue: { color: "#fff", fontSize: 22, fontWeight: "700" },
@@ -172,6 +171,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff", borderRadius: 14, padding: 10, marginBottom: 20,
     shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
   },
+  bannerWrapper: { marginBottom: 20 },
   noData: {
     backgroundColor: "#fff", borderRadius: 14, padding: 30, marginBottom: 20,
     alignItems: "center",
