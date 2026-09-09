@@ -67,6 +67,7 @@ export default function DailyScreen() {
   const [date, setDate] = useState(toDateStr(new Date()));
   const [rec, setRec] = useState<DailyRecord>({ date });
   const [goals, setGoals] = useState<Goals | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     loadGoals().then(setGoals);
@@ -100,14 +101,43 @@ export default function DailyScreen() {
   }
 
   async function handleSave() {
-    const toSave: DailyRecord = {
-      ...rec,
-      weight: rec.weight ? Number(rec.weight) : undefined,
-      exerciseMin: rec.exerciseMin ? Number(rec.exerciseMin) : undefined,
-      exerciseCal: rec.exerciseCal ? Number(rec.exerciseCal) : undefined,
-    };
-    await saveRecord(toSave);
-    Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
+    // --- 入力バリデーション ---
+    // TextInput の値は文字列として渡されるため、文字列として評価する
+    const weightStr = String(rec.weight ?? "").trim();
+    const weightVal = weightStr ? Number(weightStr) : undefined;
+    if (weightStr && (isNaN(weightVal!) || weightVal! < 1 || weightVal! > 300)) {
+      Alert.alert("入力エラー", "体重は1〜300kgの範囲で数値を入力してください");
+      return;
+    }
+
+    const exMinStr = String(rec.exerciseMin ?? "").trim();
+    const exMin = exMinStr ? Number(exMinStr) : undefined;
+    if (exMinStr && (isNaN(exMin!) || exMin! < 0 || exMin! > 1440)) {
+      Alert.alert("入力エラー", "運動時間は0〜1440分の範囲で入力してください");
+      return;
+    }
+
+    const exCalStr = String(rec.exerciseCal ?? "").trim();
+    const exCal = exCalStr ? Number(exCalStr) : undefined;
+    if (exCalStr && (isNaN(exCal!) || exCal! < 0)) {
+      Alert.alert("入力エラー", "消費カロリーは0以上の値を入力してください");
+      return;
+    }
+
+    // --- 保存処理 ---
+    setIsSaving(true);
+    try {
+      const toSave: DailyRecord = {
+        ...rec,
+        weight: weightVal,
+        exerciseMin: exMin,
+        exerciseCal: exCal,
+      };
+      await saveRecord(toSave);
+      Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function changeDate(delta: number) {
@@ -188,8 +218,12 @@ export default function DailyScreen() {
         />
       </Section>
 
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>記録を保存</Text>
+      <TouchableOpacity
+        style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+        onPress={handleSave}
+        disabled={isSaving}
+      >
+        <Text style={styles.saveBtnText}>{isSaving ? "保存中..." : "記録を保存"}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -237,6 +271,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.green, borderRadius: 12, padding: 16,
     alignItems: "center", marginTop: 8,
   },
+  saveBtnDisabled: { opacity: 0.65 },
   saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   bmiChip: { backgroundColor: C.blueLight, borderRadius: 8, padding: 10, marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   bmiChipLabel: { color: C.blue, fontSize: 12 },

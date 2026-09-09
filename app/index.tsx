@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, Dimensions } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Dimensions, ActivityIndicator } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { LineChart } from "react-native-chart-kit";
 import { loadAllRecords, loadGoals, calcWeeklyStats, calcStreak, calcBMI, getBMICategory } from "../store";
@@ -35,19 +35,23 @@ export default function DashboardScreen() {
   const [goals, setGoals] = useState<Goals | null>(null);
   const [weekStats, setWeekStats] = useState<WeeklyStats[]>([]);
   const [streakInfo, setStreakInfo] = useState<StreakInfo | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
+      setIsLoading(true);
       (async () => {
         const [g, records] = await Promise.all([loadGoals(), loadAllRecords()]);
         setGoals(g);
         setWeekStats(calcWeeklyStats(records, g.startDate));
         setStreakInfo(calcStreak(records));
+        setIsLoading(false);
       })();
     }, [])
   );
 
-  const latest = weekStats.find((w) => w.avgWeight);
+  // 最新（最も直近）の体重データがある週を取得する（週番号昇順配列の末尾から検索）
+  const latest = [...weekStats].reverse().find((w) => w.avgWeight);
   const thisWeek = weekStats[0];
 
   const chartData = weekStats.filter((w) => w.avgWeight).slice(0, 13);
@@ -55,6 +59,15 @@ export default function DashboardScreen() {
 
   function fmtNum(n?: number, dec = 1) {
     return n != null ? n.toFixed(dec) : "--";
+  }
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={C.green} />
+        <Text style={styles.loadingText}>データを読み込んでいます...</Text>
+      </View>
+    );
   }
 
   return (
@@ -153,6 +166,8 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8F9FA" },
   content: { padding: 16, paddingBottom: 40 },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F8F9FA" },
+  loadingText: { marginTop: 12, fontSize: 14, color: C.sub },
   banner: {
     backgroundColor: C.green, borderRadius: 14, padding: 18,
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
