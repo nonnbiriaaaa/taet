@@ -156,7 +156,6 @@ const styles = StyleSheet.create({
   banner: {
     backgroundColor: C.green, borderRadius: 14, padding: 18,
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    marginBottom: 20,
   },
   bannerSub: { color: "rgba(255,255,255,0.8)", fontSize: 12 },
   bannerValue: { color: "#fff", fontSize: 22, fontWeight: "700" },
@@ -168,6 +167,7 @@ const styles = StyleSheet.create({
   },
   kpiLabel: { fontSize: 12, fontWeight: "600", marginBottom: 6 },
   kpiValue: { fontSize: 20, fontWeight: "700" },
+  bannerWrapper: { marginBottom: 20 },
   chartBox: {
     backgroundColor: "#fff", borderRadius: 14, padding: 10, marginBottom: 20,
     shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
