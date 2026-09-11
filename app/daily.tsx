@@ -12,6 +12,7 @@ const C = {
   blue: "#1A5276", blueLight: "#D6EAF8",
   orange: "#BA4A00",
   purple: "#6C3483", purpleLight: "#E8DAEF",
+  red: "#C0392B", redLight: "#FADBD8",
   gray: "#F2F3F4", border: "#DDDDDD", text: "#222",
 };
 
@@ -24,6 +25,46 @@ function fmtDate(s: string) {
   return `${d.getMonth() + 1}月${d.getDate()}日（${"日月火水木金土"[d.getDay()]}）`;
 }
 
+// バリデーション: エラーメッセージの配列を返す
+function validateRecord(rec: DailyRecord): string[] {
+  const errors: string[] = [];
+
+  // 体重チェック (1〜500 kg)
+  if (rec.weight != null && String(rec.weight).trim() !== "") {
+    const w = Number(rec.weight);
+    if (isNaN(w) || w <= 0 || w > 500) {
+      errors.push("• 体重: 1〜500 kg の数値を入力してください");
+    }
+  }
+
+  // 運動時間チェック (0〜1440 分)
+  if (rec.exerciseMin != null && String(rec.exerciseMin).trim() !== "") {
+    const m = Number(rec.exerciseMin);
+    if (isNaN(m) || m < 0 || m > 1440) {
+      errors.push("• 運動時間: 0〜1440 分の数値を入力してください");
+    }
+  }
+
+  // 消費カロリーチェック (0〜99999 kcal)
+  if (rec.exerciseCal != null && String(rec.exerciseCal).trim() !== "") {
+    const c = Number(rec.exerciseCal);
+    if (isNaN(c) || c < 0 || c > 99999) {
+      errors.push("• 消費カロリー: 0〜99999 kcal の数値を入力してください");
+    }
+  }
+
+  // 時刻フォーマットチェック (HH:MM)
+  const timeRe = /^([01]?\d|2[0-3]):[0-5]\d$/;
+  if (rec.bedtime && rec.bedtime.trim() !== "" && !timeRe.test(rec.bedtime.trim())) {
+    errors.push("• 就寝時刻: HH:MM 形式で入力してください（例: 23:00）");
+  }
+  if (rec.wakeup && rec.wakeup.trim() !== "" && !timeRe.test(rec.wakeup.trim())) {
+    errors.push("• 起床時刻: HH:MM 形式で入力してください（例: 07:00）");
+  }
+
+  return errors;
+}
+
 interface FieldProps {
   label: string;
   value: string;
@@ -32,13 +73,14 @@ interface FieldProps {
   placeholder?: string;
   unit?: string;
   accent?: string;
+  hasError?: boolean;
 }
 
-function Field({ label, value, onChangeText, keyboardType = "default", placeholder, unit, accent = C.blue }: FieldProps) {
+function Field({ label, value, onChangeText, keyboardType = "default", placeholder, unit, accent = C.blue, hasError = false }: FieldProps) {
   return (
     <View style={styles.field}>
-      <Text style={[styles.fieldLabel, { color: accent }]}>{label}</Text>
-      <View style={[styles.fieldRow, { borderColor: accent }]}>
+      <Text style={[styles.fieldLabel, { color: hasError ? C.red : accent }]}>{label}</Text>
+      <View style={[styles.fieldRow, { borderColor: hasError ? C.red : accent }]}>
         <TextInput
           style={styles.fieldInput}
           value={value}
@@ -48,7 +90,7 @@ function Field({ label, value, onChangeText, keyboardType = "default", placehold
           placeholderTextColor="#AAA"
           returnKeyType="done"
         />
-        {unit && <Text style={[styles.fieldUnit, { color: accent }]}>{unit}</Text>}
+        {unit && <Text style={[styles.fieldUnit, { color: hasError ? C.red : accent }]}>{unit}</Text>}
       </View>
     </View>
   );
@@ -67,23 +109,30 @@ export default function DailyScreen() {
   const [date, setDate] = useState(toDateStr(new Date()));
   const [rec, setRec] = useState<DailyRecord>({ date });
   const [goals, setGoals] = useState<Goals | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
 
   useEffect(() => {
     loadGoals().then(setGoals);
   }, []);
 
   useEffect(() => {
-    loadRecord(date).then((r) => setRec(r ?? { date }));
+    loadRecord(date).then((r) => {
+      setRec(r ?? { date });
+      setErrors([]);  // 日付変更時にエラーをリセット
+    });
   }, [date]);
 
-  const set = (key: keyof DailyRecord) => (val: string) =>
+  const set = (key: keyof DailyRecord) => (val: string) => {
     setRec((r) => ({ ...r, [key]: val }));
+    // 入力変更時にエラーをクリア
+    if (errors.length > 0) setErrors([]);
+  };
 
   function calcSleep(bed: string, wake: string): number | undefined {
     if (!bed || !wake) return undefined;
     const [bh, bm] = bed.split(":").map(Number);
     const [wh, wm] = wake.split(":").map(Number);
-    if (isNaN(bh) || isNaN(wh)) return undefined;
+    if (isNaN(bh) || isNaN(wh) || isNaN(bm) || isNaN(wm)) return undefined;
     let diff = (wh * 60 + wm) - (bh * 60 + bm);
     if (diff < 0) diff += 24 * 60;
     return Math.round((diff / 60) * 10) / 10;
@@ -92,14 +141,29 @@ export default function DailyScreen() {
   function handleBedtime(v: string) {
     const sleep = calcSleep(v, rec.wakeup ?? "");
     setRec((r) => ({ ...r, bedtime: v, sleepHours: sleep }));
+    if (errors.length > 0) setErrors([]);
   }
 
   function handleWakeup(v: string) {
     const sleep = calcSleep(rec.bedtime ?? "", v);
     setRec((r) => ({ ...r, wakeup: v, sleepHours: sleep }));
+    if (errors.length > 0) setErrors([]);
   }
 
   async function handleSave() {
+    // バリデーション実行
+    const validationErrors = validateRecord(rec);
+    if (validationErrors.length > 0) {
+      setErrors(validationErrors);
+      Alert.alert(
+        "入力内容を確認してください",
+        validationErrors.join("\n"),
+        [{ text: "OK", style: "default" }]
+      );
+      return;
+    }
+
+    setErrors([]);
     const toSave: DailyRecord = {
       ...rec,
       weight: rec.weight ? Number(rec.weight) : undefined,
@@ -115,6 +179,9 @@ export default function DailyScreen() {
     d.setDate(d.getDate() + delta);
     setDate(toDateStr(d));
   }
+
+  // バリデーション済みの各フィールドのエラー有無を判定
+  const fieldHasError = (field: string) => errors.some((e) => e.startsWith(`• ${field}`));
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -134,9 +201,26 @@ export default function DailyScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* バリデーションエラーバナー */}
+      {errors.length > 0 && (
+        <View style={styles.errorBanner}>
+          <Ionicons name="alert-circle" size={16} color={C.red} />
+          <Text style={styles.errorBannerText}>入力内容に誤りがあります。各フィールドを確認してください。</Text>
+        </View>
+      )}
+
       {/* 体重 */}
       <Section title="体重" color={C.green}>
-        <Field label="体重" value={String(rec.weight ?? "")} onChangeText={set("weight")} keyboardType="numeric" unit="kg" placeholder="0.0" accent={C.green} />
+        <Field
+          label="体重"
+          value={String(rec.weight ?? "")}
+          onChangeText={set("weight")}
+          keyboardType="numeric"
+          unit="kg"
+          placeholder="0.0"
+          accent={C.green}
+          hasError={fieldHasError("体重")}
+        />
         {rec.weight && goals?.heightCm > 0 && (() => {
           const bmi = calcBMI(Number(rec.weight), goals!.heightCm);
           const cat = getBMICategory(bmi);
@@ -160,14 +244,46 @@ export default function DailyScreen() {
       {/* 運動 */}
       <Section title="運動" color={C.green}>
         <Field label="運動種類" value={rec.exerciseType ?? ""} onChangeText={set("exerciseType")} placeholder="例: ウォーキング" accent={C.green} />
-        <Field label="運動時間" value={String(rec.exerciseMin ?? "")} onChangeText={set("exerciseMin")} keyboardType="numeric" unit="分" placeholder="0" accent={C.green} />
-        <Field label="消費カロリー" value={String(rec.exerciseCal ?? "")} onChangeText={set("exerciseCal")} keyboardType="numeric" unit="kcal" placeholder="0" accent={C.green} />
+        <Field
+          label="運動時間"
+          value={String(rec.exerciseMin ?? "")}
+          onChangeText={set("exerciseMin")}
+          keyboardType="numeric"
+          unit="分"
+          placeholder="0"
+          accent={C.green}
+          hasError={fieldHasError("運動時間")}
+        />
+        <Field
+          label="消費カロリー"
+          value={String(rec.exerciseCal ?? "")}
+          onChangeText={set("exerciseCal")}
+          keyboardType="numeric"
+          unit="kcal"
+          placeholder="0"
+          accent={C.green}
+          hasError={fieldHasError("消費カロリー")}
+        />
       </Section>
 
       {/* 睡眠 */}
       <Section title="睡眠" color={C.blue}>
-        <Field label="就寝時刻" value={rec.bedtime ?? ""} onChangeText={handleBedtime} placeholder="23:00" accent={C.blue} />
-        <Field label="起床時刻" value={rec.wakeup ?? ""} onChangeText={handleWakeup} placeholder="07:00" accent={C.blue} />
+        <Field
+          label="就寝時刻"
+          value={rec.bedtime ?? ""}
+          onChangeText={handleBedtime}
+          placeholder="23:00"
+          accent={C.blue}
+          hasError={fieldHasError("就寝時刻")}
+        />
+        <Field
+          label="起床時刻"
+          value={rec.wakeup ?? ""}
+          onChangeText={handleWakeup}
+          placeholder="07:00"
+          accent={C.blue}
+          hasError={fieldHasError("起床時刻")}
+        />
         <View style={styles.sleepResult}>
           <Text style={styles.sleepLabel}>睡眠時間</Text>
           <Text style={[styles.sleepValue, { color: C.blue }]}>
@@ -207,6 +323,12 @@ const styles = StyleSheet.create({
   dateText: { fontSize: 16, fontWeight: "600", color: C.text },
   todayBtn: { backgroundColor: C.greenLight, paddingHorizontal: 12, paddingVertical: 3, borderRadius: 10, marginTop: 4 },
   todayBtnText: { color: C.green, fontSize: 11, fontWeight: "600" },
+  errorBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: C.redLight, borderRadius: 10, padding: 12,
+    marginBottom: 14, borderLeftWidth: 4, borderLeftColor: C.red,
+  },
+  errorBannerText: { flex: 1, fontSize: 13, color: C.red, fontWeight: "600" },
   section: {
     backgroundColor: "#fff", borderRadius: 12, padding: 16,
     marginBottom: 14, borderLeftWidth: 4,
