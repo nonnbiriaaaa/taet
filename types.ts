@@ -11,6 +11,7 @@ export interface DailyRecord {
   bedtime?: string;  // HH:MM
   wakeup?: string;   // HH:MM
   sleepHours?: number;
+  waterMl?: number;  // 水分摂取量 (ml)
   memo?: string;
 }
 
@@ -33,6 +34,7 @@ export interface WeeklyStats {
   totalExerciseMin: number;
   totalCal: number;
   avgSleep?: number;
+  totalWaterMl: number;  // 週の合計水分摂取量 (ml)
   achievementRate?: number;
 }
 

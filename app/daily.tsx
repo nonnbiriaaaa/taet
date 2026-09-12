@@ -24,6 +24,16 @@ function fmtDate(s: string) {
   return `${d.getMonth() + 1}月${d.getDate()}日（${"日月火水木金土"[d.getDay()]}）`;
 }
 
+/** 文字列や数値から安全に数値へ変換（空文字・null・undefinedはundefinedを返す） */
+function parseNum(v: unknown): number | undefined {
+  if (v === "" || v === null || v === undefined) return undefined;
+  const n = Number(v);
+  return isNaN(n) ? undefined : n;
+}
+
+const WATER_QUICK_ADD = [100, 200, 500] as const;
+const WATER_DAILY_GOAL_ML = 2000;
+
 interface FieldProps {
   label: string;
   value: string;
@@ -99,12 +109,17 @@ export default function DailyScreen() {
     setRec((r) => ({ ...r, wakeup: v, sleepHours: sleep }));
   }
 
+  function addWater(ml: number) {
+    setRec((r) => ({ ...r, waterMl: (parseNum(r.waterMl) ?? 0) + ml }));
+  }
+
   async function handleSave() {
     const toSave: DailyRecord = {
       ...rec,
-      weight: rec.weight ? Number(rec.weight) : undefined,
-      exerciseMin: rec.exerciseMin ? Number(rec.exerciseMin) : undefined,
-      exerciseCal: rec.exerciseCal ? Number(rec.exerciseCal) : undefined,
+      weight: parseNum(rec.weight),
+      exerciseMin: parseNum(rec.exerciseMin),
+      exerciseCal: parseNum(rec.exerciseCal),
+      waterMl: parseNum(rec.waterMl),
     };
     await saveRecord(toSave);
     Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
@@ -115,6 +130,9 @@ export default function DailyScreen() {
     d.setDate(d.getDate() + delta);
     setDate(toDateStr(d));
   }
+
+  const waterMlNum = parseNum(rec.waterMl) ?? 0;
+  const waterPct = Math.min(100, Math.round((waterMlNum / WATER_DAILY_GOAL_ML) * 100));
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -155,6 +173,36 @@ export default function DailyScreen() {
         <Field label="昼食" value={rec.lunch ?? ""} onChangeText={set("lunch")} placeholder="例: 定食" accent={C.orange} />
         <Field label="夕食" value={rec.dinner ?? ""} onChangeText={set("dinner")} placeholder="例: サラダ、鶏肉" accent={C.orange} />
         <Field label="間食" value={rec.snack ?? ""} onChangeText={set("snack")} placeholder="例: ヨーグルト" accent={C.orange} />
+      </Section>
+
+      {/* 水分摂取 */}
+      <Section title="水分摂取" color={C.blue}>
+        <Field
+          label="今日の水分量"
+          value={String(rec.waterMl ?? "")}
+          onChangeText={set("waterMl")}
+          keyboardType="numeric"
+          unit="ml"
+          placeholder="0"
+          accent={C.blue}
+        />
+        <View style={styles.waterBtns}>
+          {WATER_QUICK_ADD.map((ml) => (
+            <TouchableOpacity key={ml} style={styles.waterBtn} onPress={() => addWater(ml)}>
+              <Text style={styles.waterBtnText}>+{ml}ml</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {waterMlNum > 0 && (
+          <View style={styles.waterProgress}>
+            <View style={styles.waterProgressBar}>
+              <View style={[styles.waterProgressFill, { width: `${waterPct}%` }]} />
+            </View>
+            <Text style={styles.waterProgressText}>
+              {waterMlNum}ml / 目標 {WATER_DAILY_GOAL_ML}ml（{waterPct}%）
+            </Text>
+          </View>
+        )}
       </Section>
 
       {/* 運動 */}
@@ -242,4 +290,23 @@ const styles = StyleSheet.create({
   bmiChipLabel: { color: C.blue, fontSize: 12 },
   bmiChipValue: { color: C.blue, fontSize: 14, fontWeight: "700" },
   bmiChipCat: { fontSize: 12, fontWeight: "400" },
+  // 水分摂取
+  waterBtns: {
+    flexDirection: "row", gap: 8, marginTop: 6, flexWrap: "wrap",
+  },
+  waterBtn: {
+    backgroundColor: C.blueLight, borderRadius: 8,
+    paddingHorizontal: 14, paddingVertical: 7,
+  },
+  waterBtnText: { color: C.blue, fontSize: 13, fontWeight: "600" },
+  waterProgress: { marginTop: 10 },
+  waterProgressBar: {
+    height: 8, backgroundColor: "#E0E0E0", borderRadius: 4, overflow: "hidden",
+  },
+  waterProgressFill: {
+    height: "100%", backgroundColor: C.blue, borderRadius: 4,
+  },
+  waterProgressText: {
+    color: C.blue, fontSize: 12, textAlign: "center", marginTop: 4,
+  },
 });

@@ -87,6 +87,7 @@ export function calcWeeklyStats(records: DailyRecord[], startDate: string): Week
       totalExerciseMin: week.reduce((s, r) => s + (r.exerciseMin ?? 0), 0),
       totalCal: week.reduce((s, r) => s + (r.exerciseCal ?? 0), 0),
       avgSleep: sleeps.length ? avg(sleeps) : undefined,
+      totalWaterMl: week.reduce((s, r) => s + (r.waterMl ?? 0), 0),
     });
   }
   return stats;
