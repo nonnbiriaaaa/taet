@@ -95,6 +95,7 @@ export default function DashboardScreen() {
         <KpiCard label="運動時間" value={thisWeek ? `${thisWeek.totalExerciseMin} 分` : "--"} bg={C.greenLight} accent={C.green} />
         <KpiCard label="消費Cal" value={thisWeek ? `${thisWeek.totalCal.toLocaleString()} kcal` : "--"} bg={C.orangeLight} accent={C.orange} />
         <KpiCard label="平均睡眠" value={thisWeek?.avgSleep ? `${fmtNum(thisWeek.avgSleep)} 時間` : "--"} bg={C.purpleLight} accent={C.purple} />
+        <KpiCard label="水分摂取" value={thisWeek ? `${thisWeek.totalWaterMl.toLocaleString()} ml` : "--"} bg={C.blueLight} accent={C.blue} />
         <KpiCard label="連続記録" value={`${streakInfo?.currentStreak ?? 0} 日`} bg={C.purpleLight} accent={C.purple} />
       </View>
 
@@ -153,10 +154,11 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8F9FA" },
   content: { padding: 16, paddingBottom: 40 },
+  bannerWrapper: { marginBottom: 20 },
   banner: {
     backgroundColor: C.green, borderRadius: 14, padding: 18,
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 10,
   },
   bannerSub: { color: "rgba(255,255,255,0.8)", fontSize: 12 },
   bannerValue: { color: "#fff", fontSize: 22, fontWeight: "700" },
