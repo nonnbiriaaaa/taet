@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   View, Text, TextInput, ScrollView,
-  TouchableOpacity, StyleSheet, Alert,
+  TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { calcBMI, getBMICategory, loadGoals, loadRecord, saveRecord } from "../store";
@@ -13,6 +13,7 @@ const C = {
   orange: "#BA4A00",
   purple: "#6C3483", purpleLight: "#E8DAEF",
   gray: "#F2F3F4", border: "#DDDDDD", text: "#222",
+  error: "#E74C3C",
 };
 
 function toDateStr(d: Date) {
@@ -32,13 +33,16 @@ interface FieldProps {
   placeholder?: string;
   unit?: string;
   accent?: string;
+  hasError?: boolean;
 }
 
-function Field({ label, value, onChangeText, keyboardType = "default", placeholder, unit, accent = C.blue }: FieldProps) {
+function Field({ label, value, onChangeText, keyboardType = "default", placeholder, unit, accent = C.blue, hasError = false }: FieldProps) {
+  const borderColor = hasError ? C.error : accent;
+  const labelColor = hasError ? C.error : accent;
   return (
     <View style={styles.field}>
-      <Text style={[styles.fieldLabel, { color: accent }]}>{label}</Text>
-      <View style={[styles.fieldRow, { borderColor: accent }]}>
+      <Text style={[styles.fieldLabel, { color: labelColor }]}>{label}</Text>
+      <View style={[styles.fieldRow, { borderColor }]}>
         <TextInput
           style={styles.fieldInput}
           value={value}
@@ -48,7 +52,7 @@ function Field({ label, value, onChangeText, keyboardType = "default", placehold
           placeholderTextColor="#AAA"
           returnKeyType="done"
         />
-        {unit && <Text style={[styles.fieldUnit, { color: accent }]}>{unit}</Text>}
+        {unit && <Text style={[styles.fieldUnit, { color: borderColor }]}>{unit}</Text>}
       </View>
     </View>
   );
@@ -63,21 +67,41 @@ function Section({ title, color, children }: { title: string; color: string; chi
   );
 }
 
+/** HH:MM 形式かどうか検証（空文字は許可） */
+function isValidTime(t: string): boolean {
+  if (!t) return true;
+  const m = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return false;
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  return h >= 0 && h <= 23 && min >= 0 && min <= 59;
+}
+
+type FieldErrors = Partial<Record<keyof DailyRecord, string>>;
+
 export default function DailyScreen() {
   const [date, setDate] = useState(toDateStr(new Date()));
   const [rec, setRec] = useState<DailyRecord>({ date });
   const [goals, setGoals] = useState<Goals | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errors, setErrors] = useState<FieldErrors>({});
 
   useEffect(() => {
     loadGoals().then(setGoals);
   }, []);
 
   useEffect(() => {
-    loadRecord(date).then((r) => setRec(r ?? { date }));
+    loadRecord(date).then((r) => {
+      setRec(r ?? { date });
+      setErrors({});
+    });
   }, [date]);
 
-  const set = (key: keyof DailyRecord) => (val: string) =>
+  const set = (key: keyof DailyRecord) => (val: string) => {
     setRec((r) => ({ ...r, [key]: val }));
+    // 入力変更時にそのフィールドのエラーを解除
+    if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
+  };
 
   function calcSleep(bed: string, wake: string): number | undefined {
     if (!bed || !wake) return undefined;
@@ -92,22 +116,78 @@ export default function DailyScreen() {
   function handleBedtime(v: string) {
     const sleep = calcSleep(v, rec.wakeup ?? "");
     setRec((r) => ({ ...r, bedtime: v, sleepHours: sleep }));
+    if (errors.bedtime) setErrors((e) => ({ ...e, bedtime: undefined }));
   }
 
   function handleWakeup(v: string) {
     const sleep = calcSleep(rec.bedtime ?? "", v);
     setRec((r) => ({ ...r, wakeup: v, sleepHours: sleep }));
+    if (errors.wakeup) setErrors((e) => ({ ...e, wakeup: undefined }));
+  }
+
+  /** バリデーション実行。エラーがあれば state に設定して false を返す */
+  function validateInputs(): boolean {
+    const newErrors: FieldErrors = {};
+
+    const weightStr = String(rec.weight ?? "");
+    if (weightStr !== "" && weightStr !== "undefined") {
+      const w = Number(weightStr);
+      if (isNaN(w) || w < 0.1 || w > 500) {
+        newErrors.weight = "体重は 0.1〜500 kg の範囲で入力してください";
+      }
+    }
+
+    const exMinStr = String(rec.exerciseMin ?? "");
+    if (exMinStr !== "" && exMinStr !== "undefined") {
+      const m = Number(exMinStr);
+      if (isNaN(m) || m < 0 || m > 1440) {
+        newErrors.exerciseMin = "運動時間は 0〜1440 分の範囲で入力してください";
+      }
+    }
+
+    const calStr = String(rec.exerciseCal ?? "");
+    if (calStr !== "" && calStr !== "undefined") {
+      const c = Number(calStr);
+      if (isNaN(c) || c < 0 || c > 100000) {
+        newErrors.exerciseCal = "消費カロリーは 0〜100000 kcal の範囲で入力してください";
+      }
+    }
+
+    if (rec.bedtime && !isValidTime(rec.bedtime)) {
+      newErrors.bedtime = "HH:MM 形式で入力してください（例: 23:00）";
+    }
+
+    if (rec.wakeup && !isValidTime(rec.wakeup)) {
+      newErrors.wakeup = "HH:MM 形式で入力してください（例: 07:00）";
+    }
+
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      Alert.alert("入力エラー", Object.values(newErrors)[0]);
+      return false;
+    }
+    return true;
   }
 
   async function handleSave() {
-    const toSave: DailyRecord = {
-      ...rec,
-      weight: rec.weight ? Number(rec.weight) : undefined,
-      exerciseMin: rec.exerciseMin ? Number(rec.exerciseMin) : undefined,
-      exerciseCal: rec.exerciseCal ? Number(rec.exerciseCal) : undefined,
-    };
-    await saveRecord(toSave);
-    Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
+    if (!validateInputs()) return;
+
+    setIsSaving(true);
+    try {
+      const toSave: DailyRecord = {
+        ...rec,
+        weight: rec.weight ? Number(rec.weight) : undefined,
+        exerciseMin: rec.exerciseMin ? Number(rec.exerciseMin) : undefined,
+        exerciseCal: rec.exerciseCal ? Number(rec.exerciseCal) : undefined,
+      };
+      await saveRecord(toSave);
+      Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
+    } catch (e) {
+      Alert.alert("エラー", "保存に失敗しました。もう一度お試しください。");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function changeDate(delta: number) {
@@ -136,7 +216,17 @@ export default function DailyScreen() {
 
       {/* 体重 */}
       <Section title="体重" color={C.green}>
-        <Field label="体重" value={String(rec.weight ?? "")} onChangeText={set("weight")} keyboardType="numeric" unit="kg" placeholder="0.0" accent={C.green} />
+        <Field
+          label="体重"
+          value={String(rec.weight ?? "")}
+          onChangeText={set("weight")}
+          keyboardType="numeric"
+          unit="kg"
+          placeholder="0.0"
+          accent={C.green}
+          hasError={!!errors.weight}
+        />
+        {errors.weight && <Text style={styles.errorText}>{errors.weight}</Text>}
         {rec.weight && goals?.heightCm > 0 && (() => {
           const bmi = calcBMI(Number(rec.weight), goals!.heightCm);
           const cat = getBMICategory(bmi);
@@ -160,14 +250,50 @@ export default function DailyScreen() {
       {/* 運動 */}
       <Section title="運動" color={C.green}>
         <Field label="運動種類" value={rec.exerciseType ?? ""} onChangeText={set("exerciseType")} placeholder="例: ウォーキング" accent={C.green} />
-        <Field label="運動時間" value={String(rec.exerciseMin ?? "")} onChangeText={set("exerciseMin")} keyboardType="numeric" unit="分" placeholder="0" accent={C.green} />
-        <Field label="消費カロリー" value={String(rec.exerciseCal ?? "")} onChangeText={set("exerciseCal")} keyboardType="numeric" unit="kcal" placeholder="0" accent={C.green} />
+        <Field
+          label="運動時間"
+          value={String(rec.exerciseMin ?? "")}
+          onChangeText={set("exerciseMin")}
+          keyboardType="numeric"
+          unit="分"
+          placeholder="0"
+          accent={C.green}
+          hasError={!!errors.exerciseMin}
+        />
+        {errors.exerciseMin && <Text style={styles.errorText}>{errors.exerciseMin}</Text>}
+        <Field
+          label="消費カロリー"
+          value={String(rec.exerciseCal ?? "")}
+          onChangeText={set("exerciseCal")}
+          keyboardType="numeric"
+          unit="kcal"
+          placeholder="0"
+          accent={C.green}
+          hasError={!!errors.exerciseCal}
+        />
+        {errors.exerciseCal && <Text style={styles.errorText}>{errors.exerciseCal}</Text>}
       </Section>
 
       {/* 睡眠 */}
       <Section title="睡眠" color={C.blue}>
-        <Field label="就寝時刻" value={rec.bedtime ?? ""} onChangeText={handleBedtime} placeholder="23:00" accent={C.blue} />
-        <Field label="起床時刻" value={rec.wakeup ?? ""} onChangeText={handleWakeup} placeholder="07:00" accent={C.blue} />
+        <Field
+          label="就寝時刻"
+          value={rec.bedtime ?? ""}
+          onChangeText={handleBedtime}
+          placeholder="23:00"
+          accent={C.blue}
+          hasError={!!errors.bedtime}
+        />
+        {errors.bedtime && <Text style={styles.errorText}>{errors.bedtime}</Text>}
+        <Field
+          label="起床時刻"
+          value={rec.wakeup ?? ""}
+          onChangeText={handleWakeup}
+          placeholder="07:00"
+          accent={C.blue}
+          hasError={!!errors.wakeup}
+        />
+        {errors.wakeup && <Text style={styles.errorText}>{errors.wakeup}</Text>}
         <View style={styles.sleepResult}>
           <Text style={styles.sleepLabel}>睡眠時間</Text>
           <Text style={[styles.sleepValue, { color: C.blue }]}>
@@ -188,8 +314,19 @@ export default function DailyScreen() {
         />
       </Section>
 
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>記録を保存</Text>
+      <TouchableOpacity
+        style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+        onPress={handleSave}
+        disabled={isSaving}
+      >
+        {isSaving ? (
+          <View style={styles.saveBtnContent}>
+            <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.saveBtnText}>保存中...</Text>
+          </View>
+        ) : (
+          <Text style={styles.saveBtnText}>記録を保存</Text>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );
@@ -221,6 +358,7 @@ const styles = StyleSheet.create({
   },
   fieldInput: { flex: 1, fontSize: 15, paddingVertical: 8, color: C.text },
   fieldUnit: { fontSize: 13, marginLeft: 4 },
+  errorText: { fontSize: 11, color: C.error, marginTop: -6, marginBottom: 6, marginLeft: 2 },
   sleepResult: {
     flexDirection: "row", justifyContent: "space-between",
     alignItems: "center", backgroundColor: C.blueLight,
@@ -237,6 +375,8 @@ const styles = StyleSheet.create({
     backgroundColor: C.green, borderRadius: 12, padding: 16,
     alignItems: "center", marginTop: 8,
   },
+  saveBtnDisabled: { opacity: 0.7 },
+  saveBtnContent: { flexDirection: "row", alignItems: "center" },
   saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   bmiChip: { backgroundColor: C.blueLight, borderRadius: 8, padding: 10, marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   bmiChipLabel: { color: C.blue, fontSize: 12 },
