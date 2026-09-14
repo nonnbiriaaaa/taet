@@ -13,6 +13,7 @@ const C = {
   orange: "#BA4A00",
   purple: "#6C3483", purpleLight: "#E8DAEF",
   gray: "#F2F3F4", border: "#DDDDDD", text: "#222",
+  error: "#C0392B", errorLight: "#FDECEA",
 };
 
 function toDateStr(d: Date) {
@@ -24,6 +25,58 @@ function fmtDate(s: string) {
   return `${d.getMonth() + 1}月${d.getDate()}日（${"日月火水木金土"[d.getDay()]}）`;
 }
 
+interface ValidationErrors {
+  weight?: string;
+  exerciseMin?: string;
+  exerciseCal?: string;
+  bedtime?: string;
+  wakeup?: string;
+}
+
+function validate(rec: DailyRecord): ValidationErrors {
+  const errors: ValidationErrors = {};
+
+  const weightStr = String(rec.weight ?? "").trim();
+  if (weightStr !== "") {
+    const w = parseFloat(weightStr);
+    if (isNaN(w) || w <= 0) {
+      errors.weight = "正の数値を入力してください";
+    } else if (w < 20 || w > 300) {
+      errors.weight = "20〜300kgの範囲で入力してください";
+    }
+  }
+
+  const exMinStr = String(rec.exerciseMin ?? "").trim();
+  if (exMinStr !== "") {
+    const m = parseFloat(exMinStr);
+    if (isNaN(m) || m < 0) {
+      errors.exerciseMin = "0以上の数値を入力してください";
+    } else if (m > 1440) {
+      errors.exerciseMin = "1440分以下で入力してください";
+    }
+  }
+
+  const exCalStr = String(rec.exerciseCal ?? "").trim();
+  if (exCalStr !== "") {
+    const c = parseFloat(exCalStr);
+    if (isNaN(c) || c < 0) {
+      errors.exerciseCal = "0以上の数値を入力してください";
+    } else if (c > 10000) {
+      errors.exerciseCal = "10000kcal以下で入力してください";
+    }
+  }
+
+  const timeRe = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+  if (rec.bedtime && !timeRe.test(rec.bedtime)) {
+    errors.bedtime = "HH:MM形式で入力してください（例: 23:00）";
+  }
+  if (rec.wakeup && !timeRe.test(rec.wakeup)) {
+    errors.wakeup = "HH:MM形式で入力してください（例: 07:00）";
+  }
+
+  return errors;
+}
+
 interface FieldProps {
   label: string;
   value: string;
@@ -32,13 +85,16 @@ interface FieldProps {
   placeholder?: string;
   unit?: string;
   accent?: string;
+  error?: string;
 }
 
-function Field({ label, value, onChangeText, keyboardType = "default", placeholder, unit, accent = C.blue }: FieldProps) {
+function Field({ label, value, onChangeText, keyboardType = "default", placeholder, unit, accent = C.blue, error }: FieldProps) {
+  const borderColor = error ? C.error : accent;
+  const labelColor = error ? C.error : accent;
   return (
     <View style={styles.field}>
-      <Text style={[styles.fieldLabel, { color: accent }]}>{label}</Text>
-      <View style={[styles.fieldRow, { borderColor: accent }]}>
+      <Text style={[styles.fieldLabel, { color: labelColor }]}>{label}</Text>
+      <View style={[styles.fieldRow, { borderColor }]}>
         <TextInput
           style={styles.fieldInput}
           value={value}
@@ -48,8 +104,9 @@ function Field({ label, value, onChangeText, keyboardType = "default", placehold
           placeholderTextColor="#AAA"
           returnKeyType="done"
         />
-        {unit && <Text style={[styles.fieldUnit, { color: accent }]}>{unit}</Text>}
+        {unit && <Text style={[styles.fieldUnit, { color: borderColor }]}>{unit}</Text>}
       </View>
+      {error ? <Text style={styles.errorText}>⚠ {error}</Text> : null}
     </View>
   );
 }
@@ -67,6 +124,7 @@ export default function DailyScreen() {
   const [date, setDate] = useState(toDateStr(new Date()));
   const [rec, setRec] = useState<DailyRecord>({ date });
   const [goals, setGoals] = useState<Goals | null>(null);
+  const [errors, setErrors] = useState<ValidationErrors>({});
 
   useEffect(() => {
     loadGoals().then(setGoals);
@@ -74,10 +132,16 @@ export default function DailyScreen() {
 
   useEffect(() => {
     loadRecord(date).then((r) => setRec(r ?? { date }));
+    setErrors({});
   }, [date]);
 
-  const set = (key: keyof DailyRecord) => (val: string) =>
+  const set = (key: keyof DailyRecord) => (val: string) => {
     setRec((r) => ({ ...r, [key]: val }));
+    // フィールド変更時に該当エラーをクリア
+    if (key in errors) {
+      setErrors((e) => { const next = { ...e }; delete (next as any)[key]; return next; });
+    }
+  };
 
   function calcSleep(bed: string, wake: string): number | undefined {
     if (!bed || !wake) return undefined;
@@ -90,16 +154,27 @@ export default function DailyScreen() {
   }
 
   function handleBedtime(v: string) {
-    const sleep = calcSleep(v, rec.wakeup ?? "");
+    const timeRe = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+    const sleep = timeRe.test(v) ? calcSleep(v, rec.wakeup ?? "") : undefined;
     setRec((r) => ({ ...r, bedtime: v, sleepHours: sleep }));
+    if (errors.bedtime) setErrors((e) => { const next = { ...e }; delete next.bedtime; return next; });
   }
 
   function handleWakeup(v: string) {
-    const sleep = calcSleep(rec.bedtime ?? "", v);
+    const timeRe = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+    const sleep = timeRe.test(v) ? calcSleep(rec.bedtime ?? "", v) : undefined;
     setRec((r) => ({ ...r, wakeup: v, sleepHours: sleep }));
+    if (errors.wakeup) setErrors((e) => { const next = { ...e }; delete next.wakeup; return next; });
   }
 
   async function handleSave() {
+    const validationErrors = validate(rec);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      Alert.alert("入力エラー", "赤く表示されているフィールドの入力内容を確認してください");
+      return;
+    }
+    setErrors({});
     const toSave: DailyRecord = {
       ...rec,
       weight: rec.weight ? Number(rec.weight) : undefined,
@@ -136,7 +211,16 @@ export default function DailyScreen() {
 
       {/* 体重 */}
       <Section title="体重" color={C.green}>
-        <Field label="体重" value={String(rec.weight ?? "")} onChangeText={set("weight")} keyboardType="numeric" unit="kg" placeholder="0.0" accent={C.green} />
+        <Field
+          label="体重"
+          value={String(rec.weight ?? "")}
+          onChangeText={set("weight")}
+          keyboardType="numeric"
+          unit="kg"
+          placeholder="0.0"
+          accent={C.green}
+          error={errors.weight}
+        />
         {rec.weight && goals?.heightCm > 0 && (() => {
           const bmi = calcBMI(Number(rec.weight), goals!.heightCm);
           const cat = getBMICategory(bmi);
@@ -160,14 +244,46 @@ export default function DailyScreen() {
       {/* 運動 */}
       <Section title="運動" color={C.green}>
         <Field label="運動種類" value={rec.exerciseType ?? ""} onChangeText={set("exerciseType")} placeholder="例: ウォーキング" accent={C.green} />
-        <Field label="運動時間" value={String(rec.exerciseMin ?? "")} onChangeText={set("exerciseMin")} keyboardType="numeric" unit="分" placeholder="0" accent={C.green} />
-        <Field label="消費カロリー" value={String(rec.exerciseCal ?? "")} onChangeText={set("exerciseCal")} keyboardType="numeric" unit="kcal" placeholder="0" accent={C.green} />
+        <Field
+          label="運動時間"
+          value={String(rec.exerciseMin ?? "")}
+          onChangeText={set("exerciseMin")}
+          keyboardType="numeric"
+          unit="分"
+          placeholder="0"
+          accent={C.green}
+          error={errors.exerciseMin}
+        />
+        <Field
+          label="消費カロリー"
+          value={String(rec.exerciseCal ?? "")}
+          onChangeText={set("exerciseCal")}
+          keyboardType="numeric"
+          unit="kcal"
+          placeholder="0"
+          accent={C.green}
+          error={errors.exerciseCal}
+        />
       </Section>
 
       {/* 睡眠 */}
       <Section title="睡眠" color={C.blue}>
-        <Field label="就寝時刻" value={rec.bedtime ?? ""} onChangeText={handleBedtime} placeholder="23:00" accent={C.blue} />
-        <Field label="起床時刻" value={rec.wakeup ?? ""} onChangeText={handleWakeup} placeholder="07:00" accent={C.blue} />
+        <Field
+          label="就寝時刻"
+          value={rec.bedtime ?? ""}
+          onChangeText={handleBedtime}
+          placeholder="23:00"
+          accent={C.blue}
+          error={errors.bedtime}
+        />
+        <Field
+          label="起床時刻"
+          value={rec.wakeup ?? ""}
+          onChangeText={handleWakeup}
+          placeholder="07:00"
+          accent={C.blue}
+          error={errors.wakeup}
+        />
         <View style={styles.sleepResult}>
           <Text style={styles.sleepLabel}>睡眠時間</Text>
           <Text style={[styles.sleepValue, { color: C.blue }]}>
@@ -221,6 +337,7 @@ const styles = StyleSheet.create({
   },
   fieldInput: { flex: 1, fontSize: 15, paddingVertical: 8, color: C.text },
   fieldUnit: { fontSize: 13, marginLeft: 4 },
+  errorText: { color: C.error, fontSize: 11, marginTop: 3, marginLeft: 2 },
   sleepResult: {
     flexDirection: "row", justifyContent: "space-between",
     alignItems: "center", backgroundColor: C.blueLight,

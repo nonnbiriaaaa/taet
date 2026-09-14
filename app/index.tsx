@@ -47,7 +47,8 @@ export default function DashboardScreen() {
     }, [])
   );
 
-  const latest = weekStats.find((w) => w.avgWeight);
+  // 最新の体重データがある週を取得（最古ではなく最新）
+  const latest = [...weekStats].reverse().find((w) => w.avgWeight);
   const thisWeek = weekStats[0];
 
   const chartData = weekStats.filter((w) => w.avgWeight).slice(0, 13);
@@ -153,10 +154,10 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8F9FA" },
   content: { padding: 16, paddingBottom: 40 },
+  bannerWrapper: { marginBottom: 20 },
   banner: {
     backgroundColor: C.green, borderRadius: 14, padding: 18,
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    marginBottom: 20,
   },
   bannerSub: { color: "rgba(255,255,255,0.8)", fontSize: 12 },
   bannerValue: { color: "#fff", fontSize: 22, fontWeight: "700" },
