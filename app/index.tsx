@@ -2,8 +2,8 @@ import { useCallback, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, Dimensions } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { LineChart } from "react-native-chart-kit";
-import { loadAllRecords, loadGoals, calcWeeklyStats, calcStreak, calcBMI, getBMICategory } from "../store";
-import { Goals, WeeklyStats, StreakInfo } from "../types";
+import { loadAllRecords, loadGoals, loadRecord, calcWeeklyStats, calcStreak, calcBMI, getBMICategory } from "../store";
+import { DailyRecord, Goals, WeeklyStats, StreakInfo } from "../types";
 
 const C = {
   green: "#1A7A4A", greenLight: "#D5F5E3",
@@ -35,14 +35,17 @@ export default function DashboardScreen() {
   const [goals, setGoals] = useState<Goals | null>(null);
   const [weekStats, setWeekStats] = useState<WeeklyStats[]>([]);
   const [streakInfo, setStreakInfo] = useState<StreakInfo | null>(null);
+  const [todayRecord, setTodayRecord] = useState<DailyRecord | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       (async () => {
-        const [g, records] = await Promise.all([loadGoals(), loadAllRecords()]);
+        const today = new Date().toISOString().slice(0, 10);
+        const [g, records, todayRec] = await Promise.all([loadGoals(), loadAllRecords(), loadRecord(today)]);
         setGoals(g);
         setWeekStats(calcWeeklyStats(records, g.startDate));
         setStreakInfo(calcStreak(records));
+        setTodayRecord(todayRec);
       })();
     }, [])
   );
@@ -61,7 +64,7 @@ export default function DashboardScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* 目標体重バナー */}
       {goals && (
-        <View style={styles.bannerWrapper}>
+        <View style={styles.bannerOuter}>
           <View style={styles.banner}>
             <View style={{ alignItems: "center", flex: 1 }}>
               <Text style={styles.bannerSub}>目標体重</Text>
@@ -96,6 +99,7 @@ export default function DashboardScreen() {
         <KpiCard label="消費Cal" value={thisWeek ? `${thisWeek.totalCal.toLocaleString()} kcal` : "--"} bg={C.orangeLight} accent={C.orange} />
         <KpiCard label="平均睡眠" value={thisWeek?.avgSleep ? `${fmtNum(thisWeek.avgSleep)} 時間` : "--"} bg={C.purpleLight} accent={C.purple} />
         <KpiCard label="連続記録" value={`${streakInfo?.currentStreak ?? 0} 日`} bg={C.purpleLight} accent={C.purple} />
+        <KpiCard label="今日の水分" value={todayRecord?.waterMl ? `${todayRecord.waterMl} ml` : "-- ml"} bg={C.blueLight} accent={C.blue} />
       </View>
 
       {/* 体重推移グラフ */}
@@ -153,10 +157,10 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8F9FA" },
   content: { padding: 16, paddingBottom: 40 },
+  bannerOuter: { marginBottom: 20 },
   banner: {
     backgroundColor: C.green, borderRadius: 14, padding: 18,
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    marginBottom: 20,
   },
   bannerSub: { color: "rgba(255,255,255,0.8)", fontSize: 12 },
   bannerValue: { color: "#fff", fontSize: 22, fontWeight: "700" },

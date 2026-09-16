@@ -12,6 +12,7 @@ export interface DailyRecord {
   wakeup?: string;   // HH:MM
   sleepHours?: number;
   memo?: string;
+  waterMl?: number;  // 水分摂取量 (ml)
 }
 
 export interface Goals {
