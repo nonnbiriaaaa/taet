@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   View, Text, TextInput, ScrollView,
-  TouchableOpacity, StyleSheet, Alert,
+  TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { calcBMI, getBMICategory, loadGoals, loadRecord, saveRecord } from "../store";
@@ -63,17 +63,26 @@ function Section({ title, color, children }: { title: string; color: string; chi
   );
 }
 
+const WATER_GOAL_ML = 2000;
+const WATER_QUICK_ADD = [100, 200, 350, 500] as const;
+
 export default function DailyScreen() {
   const [date, setDate] = useState(toDateStr(new Date()));
   const [rec, setRec] = useState<DailyRecord>({ date });
   const [goals, setGoals] = useState<Goals | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [loadingDate, setLoadingDate] = useState(false);
 
   useEffect(() => {
     loadGoals().then(setGoals);
   }, []);
 
   useEffect(() => {
-    loadRecord(date).then((r) => setRec(r ?? { date }));
+    setLoadingDate(true);
+    loadRecord(date).then((r) => {
+      setRec(r ?? { date });
+      setLoadingDate(false);
+    });
   }, [date]);
 
   const set = (key: keyof DailyRecord) => (val: string) =>
@@ -100,14 +109,28 @@ export default function DailyScreen() {
   }
 
   async function handleSave() {
-    const toSave: DailyRecord = {
-      ...rec,
-      weight: rec.weight ? Number(rec.weight) : undefined,
-      exerciseMin: rec.exerciseMin ? Number(rec.exerciseMin) : undefined,
-      exerciseCal: rec.exerciseCal ? Number(rec.exerciseCal) : undefined,
-    };
-    await saveRecord(toSave);
-    Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
+    if (saving) return;
+    setSaving(true);
+    try {
+      const toSave: DailyRecord = {
+        ...rec,
+        weight: rec.weight ? Number(rec.weight) : undefined,
+        exerciseMin: rec.exerciseMin ? Number(rec.exerciseMin) : undefined,
+        exerciseCal: rec.exerciseCal ? Number(rec.exerciseCal) : undefined,
+      };
+      await saveRecord(toSave);
+      Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function addWater(ml: number) {
+    setRec((r) => ({ ...r, waterMl: (r.waterMl ?? 0) + ml }));
+  }
+
+  function resetWater() {
+    setRec((r) => ({ ...r, waterMl: 0 }));
   }
 
   function changeDate(delta: number) {
@@ -115,6 +138,17 @@ export default function DailyScreen() {
     d.setDate(d.getDate() + delta);
     setDate(toDateStr(d));
   }
+
+  if (loadingDate) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={C.green} />
+      </View>
+    );
+  }
+
+  const waterPct = Math.min(100, Math.round(((rec.waterMl ?? 0) / WATER_GOAL_ML) * 100));
+  const waterReached = (rec.waterMl ?? 0) >= WATER_GOAL_ML;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -176,6 +210,40 @@ export default function DailyScreen() {
         </View>
       </Section>
 
+      {/* 水分摂取 */}
+      <Section title="水分摂取" color={C.blue}>
+        <View style={styles.waterHeader}>
+          <Text style={styles.waterTotal}>
+            <Text style={[styles.waterAmount, { color: waterReached ? C.green : C.blue }]}>
+              {rec.waterMl ?? 0}
+            </Text>
+            <Text style={styles.waterUnit}> / {WATER_GOAL_ML} ml</Text>
+          </Text>
+          {waterReached && (
+            <View style={styles.waterAchievedBadge}>
+              <Text style={styles.waterAchievedText}>目標達成!</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.waterBarBg}>
+          <View style={[styles.waterBarFill, {
+            width: `${waterPct}%` as any,
+            backgroundColor: waterReached ? C.green : C.blue,
+          }]} />
+        </View>
+        <Text style={styles.waterPct}>{waterPct}%</Text>
+        <View style={styles.waterBtns}>
+          {WATER_QUICK_ADD.map((ml) => (
+            <TouchableOpacity key={ml} style={[styles.waterBtn, { borderColor: C.blue }]} onPress={() => addWater(ml)}>
+              <Text style={[styles.waterBtnText, { color: C.blue }]}>+{ml}ml</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TouchableOpacity style={styles.waterResetBtn} onPress={resetWater}>
+          <Text style={styles.waterResetText}>リセット</Text>
+        </TouchableOpacity>
+      </Section>
+
       {/* メモ */}
       <Section title="メモ" color={C.purple}>
         <TextInput
@@ -188,8 +256,12 @@ export default function DailyScreen() {
         />
       </Section>
 
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>記録を保存</Text>
+      <TouchableOpacity style={[styles.saveBtn, saving && styles.saveBtnDisabled]} onPress={handleSave} disabled={saving}>
+        {saving ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.saveBtnText}>記録を保存</Text>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );
@@ -242,4 +314,20 @@ const styles = StyleSheet.create({
   bmiChipLabel: { color: C.blue, fontSize: 12 },
   bmiChipValue: { color: C.blue, fontSize: 14, fontWeight: "700" },
   bmiChipCat: { fontSize: 12, fontWeight: "400" },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F8F9FA" },
+  waterHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  waterTotal: { fontSize: 14 },
+  waterAmount: { fontSize: 22, fontWeight: "700" },
+  waterUnit: { fontSize: 13, color: "#666" },
+  waterAchievedBadge: { backgroundColor: C.greenLight, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 3 },
+  waterAchievedText: { color: C.green, fontSize: 11, fontWeight: "700" },
+  waterBarBg: { height: 10, backgroundColor: "#E8ECF4", borderRadius: 5, overflow: "hidden", marginBottom: 4 },
+  waterBarFill: { height: 10, borderRadius: 5 },
+  waterPct: { fontSize: 11, color: "#888", marginBottom: 12, textAlign: "right" },
+  waterBtns: { flexDirection: "row", gap: 8, marginBottom: 10 },
+  waterBtn: { flex: 1, borderWidth: 1.5, borderRadius: 8, paddingVertical: 8, alignItems: "center" },
+  waterBtnText: { fontSize: 13, fontWeight: "600" },
+  waterResetBtn: { alignSelf: "flex-end" },
+  waterResetText: { color: "#999", fontSize: 12 },
+  saveBtnDisabled: { opacity: 0.6 },
 });
