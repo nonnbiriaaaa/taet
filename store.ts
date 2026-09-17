@@ -155,6 +155,15 @@ export function calcStreak(records: DailyRecord[]): StreakInfo {
   return { currentStreak, longestStreak: longest, lastRecordDate: sorted[0] };
 }
 
+export function calcCurrentWeekIndex(startDate: string): number {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today < startDate) return 0;
+  const startMs = new Date(startDate + "T00:00:00").getTime();
+  const todayMs = new Date(today + "T00:00:00").getTime();
+  const diffDays = Math.floor((todayMs - startMs) / (1000 * 60 * 60 * 24));
+  return Math.min(Math.floor(diffDays / 7), 12);
+}
+
 export function calcAchievementRate(stat: WeeklyStats, goals: Goals): number {
   const rates: number[] = [];
   if (stat.avgSleep != null && goals.sleepGoalHours > 0) {
