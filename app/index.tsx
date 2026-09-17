@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, Dimensions } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { LineChart } from "react-native-chart-kit";
-import { loadAllRecords, loadGoals, calcWeeklyStats, calcStreak, calcBMI, getBMICategory } from "../store";
+import { loadAllRecords, loadGoals, calcWeeklyStats, calcStreak, calcBMI, getBMICategory, calcCurrentWeekIndex } from "../store";
 import { Goals, WeeklyStats, StreakInfo } from "../types";
 
 const C = {
@@ -35,6 +35,7 @@ export default function DashboardScreen() {
   const [goals, setGoals] = useState<Goals | null>(null);
   const [weekStats, setWeekStats] = useState<WeeklyStats[]>([]);
   const [streakInfo, setStreakInfo] = useState<StreakInfo | null>(null);
+  const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -43,12 +44,13 @@ export default function DashboardScreen() {
         setGoals(g);
         setWeekStats(calcWeeklyStats(records, g.startDate));
         setStreakInfo(calcStreak(records));
+        setCurrentWeekIndex(calcCurrentWeekIndex(g.startDate));
       })();
     }, [])
   );
 
   const latest = weekStats.find((w) => w.avgWeight);
-  const thisWeek = weekStats[0];
+  const thisWeek = weekStats[currentWeekIndex];
 
   const chartData = weekStats.filter((w) => w.avgWeight).slice(0, 13);
   const hasChart = chartData.length >= 2;
@@ -89,7 +91,9 @@ export default function DashboardScreen() {
       )}
 
       {/* 今週のKPI */}
-      <Text style={styles.sectionHead}>今週のサマリー</Text>
+      <Text style={styles.sectionHead}>
+        今週のサマリー{thisWeek ? `（第${thisWeek.week}週）` : ""}
+      </Text>
       <View style={styles.kpiGrid}>
         <KpiCard label="平均体重" value={thisWeek?.avgWeight ? `${fmtNum(thisWeek.avgWeight)} kg` : "--"} bg={C.blueLight} accent={C.blue} />
         <KpiCard label="運動時間" value={thisWeek ? `${thisWeek.totalExerciseMin} 分` : "--"} bg={C.greenLight} accent={C.green} />
@@ -136,8 +140,8 @@ export default function DashboardScreen() {
       {/* 週次サマリーリスト */}
       <Text style={styles.sectionHead}>週別サマリー（全13週）</Text>
       {weekStats.map((w, i) => (
-        <View key={w.week} style={[styles.weekRow, i % 2 === 1 ? { backgroundColor: "#F8FAF9" } : {}]}>
-          <Text style={styles.weekLabel}>第{w.week}週</Text>
+        <View key={w.week} style={[styles.weekRow, i % 2 === 1 ? { backgroundColor: "#F8FAF9" } : {}, i === currentWeekIndex ? styles.weekRowCurrent : {}]}>
+          <Text style={[styles.weekLabel, i === currentWeekIndex ? { color: C.green } : {}]}>第{w.week}週{i === currentWeekIndex ? " ◀" : ""}</Text>
           <Text style={styles.weekSub}>{w.startDate.slice(5)} 〜 {w.endDate.slice(5)}</Text>
           <View style={styles.weekVals}>
             <Text style={[styles.weekVal, { color: C.blue }]}>{w.avgWeight ? `${fmtNum(w.avgWeight)} kg` : "--"}</Text>
@@ -153,10 +157,10 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8F9FA" },
   content: { padding: 16, paddingBottom: 40 },
+  bannerWrapper: { marginBottom: 20 },
   banner: {
     backgroundColor: C.green, borderRadius: 14, padding: 18,
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    marginBottom: 20,
   },
   bannerSub: { color: "rgba(255,255,255,0.8)", fontSize: 12 },
   bannerValue: { color: "#fff", fontSize: 22, fontWeight: "700" },
@@ -182,7 +186,8 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center",
     shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 2, elevation: 1,
   },
-  weekLabel: { width: 42, fontSize: 13, fontWeight: "700", color: C.text },
+  weekRowCurrent: { borderLeftWidth: 3, borderLeftColor: C.green },
+  weekLabel: { width: 52, fontSize: 13, fontWeight: "700", color: C.text },
   weekSub: { flex: 1, fontSize: 11, color: C.sub },
   weekVals: { flexDirection: "row", gap: 8 },
   weekVal: { fontSize: 12, fontWeight: "600", minWidth: 52, textAlign: "right" },
