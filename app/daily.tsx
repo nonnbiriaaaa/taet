@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   View, Text, TextInput, ScrollView,
-  TouchableOpacity, StyleSheet, Alert,
+  TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { calcBMI, getBMICategory, loadGoals, loadRecord, saveRecord } from "../store";
@@ -67,13 +67,19 @@ export default function DailyScreen() {
   const [date, setDate] = useState(toDateStr(new Date()));
   const [rec, setRec] = useState<DailyRecord>({ date });
   const [goals, setGoals] = useState<Goals | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     loadGoals().then(setGoals);
   }, []);
 
   useEffect(() => {
-    loadRecord(date).then((r) => setRec(r ?? { date }));
+    setIsLoading(true);
+    loadRecord(date).then((r) => {
+      setRec(r ?? { date });
+      setIsLoading(false);
+    });
   }, [date]);
 
   const set = (key: keyof DailyRecord) => (val: string) =>
@@ -100,14 +106,20 @@ export default function DailyScreen() {
   }
 
   async function handleSave() {
-    const toSave: DailyRecord = {
-      ...rec,
-      weight: rec.weight ? Number(rec.weight) : undefined,
-      exerciseMin: rec.exerciseMin ? Number(rec.exerciseMin) : undefined,
-      exerciseCal: rec.exerciseCal ? Number(rec.exerciseCal) : undefined,
-    };
-    await saveRecord(toSave);
-    Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      const toSave: DailyRecord = {
+        ...rec,
+        weight: rec.weight ? Number(rec.weight) : undefined,
+        exerciseMin: rec.exerciseMin ? Number(rec.exerciseMin) : undefined,
+        exerciseCal: rec.exerciseCal ? Number(rec.exerciseCal) : undefined,
+      };
+      await saveRecord(toSave);
+      Alert.alert("保存しました", fmtDate(date) + " の記録を保存しました");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function changeDate(delta: number) {
@@ -118,6 +130,12 @@ export default function DailyScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={C.green} />
+          <Text style={styles.loadingText}>読み込み中...</Text>
+        </View>
+      )}
       {/* 日付選択 */}
       <View style={styles.datePicker}>
         <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateBtn}>
@@ -188,8 +206,16 @@ export default function DailyScreen() {
         />
       </Section>
 
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>記録を保存</Text>
+      <TouchableOpacity
+        style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+        onPress={handleSave}
+        disabled={isSaving}
+      >
+        {isSaving ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <Text style={styles.saveBtnText}>記録を保存</Text>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );
@@ -237,7 +263,13 @@ const styles = StyleSheet.create({
     backgroundColor: C.green, borderRadius: 12, padding: 16,
     alignItems: "center", marginTop: 8,
   },
+  saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  loadingOverlay: {
+    position: "absolute", top: 60, left: 0, right: 0,
+    alignItems: "center", zIndex: 10, gap: 8,
+  },
+  loadingText: { color: C.green, fontSize: 12, fontWeight: "600" },
   bmiChip: { backgroundColor: C.blueLight, borderRadius: 8, padding: 10, marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   bmiChipLabel: { color: C.blue, fontSize: 12 },
   bmiChipValue: { color: C.blue, fontSize: 14, fontWeight: "700" },

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   View, Text, TextInput, ScrollView,
-  TouchableOpacity, StyleSheet, Alert,
+  TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from "react-native";
 import { calcBMI, getBMICategory, loadGoals, saveGoals } from "../store";
 import { BMICategory, Goals } from "../types";
@@ -47,7 +47,12 @@ export default function GoalsScreen() {
     loadGoals().then(setGoals);
   }, []);
 
-  if (!goals) return null;
+  if (!goals) return (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color={C.green} />
+      <Text style={styles.loadingText}>読み込み中...</Text>
+    </View>
+  );
 
   const set = (key: keyof Goals) => (val: string) =>
     setGoals((g) => g ? { ...g, [key]: key === "startDate" || key === "targetDate" ? val : Number(val) } : g);
@@ -128,4 +133,9 @@ const styles = StyleSheet.create({
   bmiLabel: { fontSize: 13, color: "#1A5276" },
   bmiValue: { fontSize: 20, fontWeight: "700" },
   bmiCat: { fontSize: 13, fontWeight: "400" },
+  loadingContainer: {
+    flex: 1, justifyContent: "center", alignItems: "center",
+    backgroundColor: "#F8F9FA", gap: 12,
+  },
+  loadingText: { color: C.green, fontSize: 14, fontWeight: "600" },
 });
